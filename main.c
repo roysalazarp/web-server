@@ -46,13 +46,13 @@ int main() {
 
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
-        printf("Failed to create server socket\n");
+        fprintf(stderr, "Failed to create server socket\nError code: %d\n", errno);
         retval = -1;
         goto main_exit;
     }
 
     if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) == -1) {
-        printf("Failed to set port address for immediately re-use after the socket is closed\n");
+        fprintf(stderr, "Failed to set port address for immediately re-use after the socket is closed\nError code: %d\n", errno);
         retval = -1;
         goto main_socket_cleanup;
     }
@@ -65,13 +65,13 @@ int main() {
     };
 
     if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-        printf("Failed to bind socket to address and port\n");
+        fprintf(stderr, "Failed to bind server socket to adress(%d) and port(%d)\nError code: %d\n", server_addr.sin_addr.s_addr, server_addr.sin_port, errno);
         retval = -1;
         goto main_socket_cleanup;
     }
 
     if (listen(server_socket, MAX_CONNECTIONS) == -1) {
-        printf("Failed to set server socket to listen for incoming connections\n");
+        fprintf(stderr, "Failed to set up server socker to listen for incoming connections\nError code: %d\n", errno);
         retval = -1;
         goto main_socket_cleanup;
     }
@@ -247,7 +247,7 @@ int home_get(int client_socket, uint8_t thread_index) {
     printf("It works!!! (on thread %d)\n", thread_index);
 
     if (send(client_socket, response, strlen(response), 0) == -1) {
-        printf("Failed send buffer\n");
+        fprintf(stderr, "Failed send HTTP response\nError code: %d\n", errno);
         close(client_socket);
         return -1;
     }

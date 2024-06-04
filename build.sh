@@ -1,3 +1,3 @@
 mkdir -p ./build
 
-gcc -g -o ./build/main main.c
+gcc -g -Wall -Wextra -Werror -pedantic -o ./build/main main.c -lpthread

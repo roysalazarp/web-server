@@ -1,0 +1,96 @@
+{
+   libpq_leak_1
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+   fun:PQconnectPoll
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+}
+{
+   libpq_leak_2
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   fun:CRYPTO_strdup
+   fun:BIO_meth_new
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+   fun:PQconnectPoll
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+   fun:PQconnectdbParams
+   fun:main
+}
+{
+   libpq_leak_3
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+   fun:PQconnectPoll
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+}
+{
+   libpq_leak_4
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   fun:krb5int_setspecific
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   fun:gss_acquire_cred
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+   fun:PQconnectPoll
+}
+{
+   libpq_leak_5
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   fun:strdup
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   obj:/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+   fun:gss_add_cred_from
+   fun:gss_acquire_cred_from
+}
+{
+   libpq_leak_6
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   fun:CRYPTO_zalloc
+   fun:BIO_meth_new
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+   fun:PQconnectPoll
+   obj:/usr/lib/x86_64-linux-gnu/libpq.so.5.16
+   fun:PQconnectdbParams
+   fun:main
+}

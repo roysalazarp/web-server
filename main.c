@@ -1,6 +1,8 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
+#include <libpq-fe.h>
+#include <linux/limits.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -9,6 +11,12 @@
 #include <unistd.h>
 
 #define DEBUG 0; /** Panic should only happen in server initialization functions when in production or in all functions when in development. */
+
+#define MAX_LINE_LENGTH 100
+#define MAX_LENGTH_CWD_PATH 100
+#define MAX_LENGTH_ABSOLUTE_PATH 200
+
+#define ROWS 4
 
 typedef struct ClientSocketQueueNode {
     struct ClientSocketQueueNode *next;
@@ -20,6 +28,14 @@ typedef struct {
     int8_t panic;
     /** TODO: add more fields here that can help to reproduce the error easily */
 } Error;
+
+typedef struct {
+    char DB_NAME[12];
+    char DB_USER[16];
+    char DB_PASSWORD[9];
+    char DB_HOST[10];
+    char DB_PORT[5];
+} ENV;
 
 typedef struct {
     char http_version[10];
@@ -40,11 +56,15 @@ Error read_request(char **request_buffer, int client_socket);
 Error parse_http_request(HttpRequest *parsed_http_request, const char *http_request);
 void http_request_free(HttpRequest *parsed_http_request);
 Error not_found(int client_socket, HttpRequest *request);
+int load_values_from_file(void *structure, const char *file_path_relative_to_project_root);
+void print_query_result(PGresult *query_result);
 
 #define MAX_CONNECTIONS 100
-#define POOL_SIZE 3
+#define POOL_SIZE 1
 
 volatile sig_atomic_t keep_running = 1;
+
+PGconn *conn_pool[POOL_SIZE];
 
 pthread_t thread_pool[POOL_SIZE];
 pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -63,6 +83,14 @@ int main() {
      */
     if (signal(SIGINT, sigint_handler) == SIG_ERR) {
         fprintf(stderr, "Failed to set up signal handler for SIGINT\nError code: %d\n", errno);
+        retval = -1;
+        goto main_exit;
+    }
+
+    ENV env = {0};
+    const char env_file_path[] = ".env";
+    if (load_values_from_file(&env, env_file_path) == -1) {
+        fprintf(stderr, "Failed to load env variables from file %s\nError code: %d\n", env_file_path, errno);
         retval = -1;
         goto main_exit;
     }
@@ -103,6 +131,15 @@ int main() {
 
     printf("Server listening on port: %d...\n", port);
 
+    const char *db_connection_keywords[] = {"dbname", "user", "password", "host", "port", NULL};
+    const char *db_connection_values[6];
+    db_connection_values[0] = env.DB_NAME;
+    db_connection_values[1] = env.DB_USER;
+    db_connection_values[2] = env.DB_PASSWORD;
+    db_connection_values[3] = env.DB_HOST;
+    db_connection_values[4] = env.DB_PORT;
+    db_connection_values[5] = NULL;
+
     /** Create thread pool */
     for (i = 0; i < POOL_SIZE; i++) {
         /**
@@ -116,6 +153,15 @@ int main() {
             fprintf(stderr, "Failed to create thread at iteration n° %d\nError code: %d\n", *p_iteration, errno);
             retval = -1;
             goto main_cleanup_threads;
+        }
+    }
+
+    for (i = 0; i < POOL_SIZE; i++) {
+        conn_pool[i] = PQconnectdbParams(db_connection_keywords, db_connection_values, 0);
+        if (PQstatus(conn_pool[i]) != CONNECTION_OK) {
+            fprintf(stderr, "Failed to create db connection pool at iteration n° %d\nError code: %d\n", i, errno);
+            retval = -1;
+            goto main_cleanup;
         }
     }
 
@@ -136,14 +182,14 @@ int main() {
             /** Send signal to threads to resume execusion so they can proceed to cleanup */
             pthread_cond_signal(&thread_condition_var);
             retval = 0;
-            goto main_cleanup_threads;
+            goto main_cleanup;
         }
 
         /** At this point, we know that client_socket being -1 wouldn't have been caused by program termination */
         if (client_socket == -1) {
             fprintf(stderr, "Failed to create client socket\nError code: %d\n", errno);
             retval = -1;
-            goto main_cleanup_threads;
+            goto main_cleanup;
         }
 
         /**
@@ -156,7 +202,7 @@ int main() {
         if (pthread_mutex_lock(&thread_mutex) != 0) {
             fprintf(stderr, "Failed to lock pthread mutex\nError code: %d\n", errno);
             retval = -1;
-            goto main_cleanup_threads;
+            goto main_cleanup;
         }
 
         printf("- New request: enqueue_client_socket client socket fd %d\n", *p_client_socket);
@@ -165,14 +211,19 @@ int main() {
         if (pthread_cond_signal(&thread_condition_var) != 0) {
             fprintf(stderr, "Failed to send pthread signal\nError code: %d\n", errno);
             retval = -1;
-            goto main_cleanup_threads;
+            goto main_cleanup;
         }
 
         if (pthread_mutex_unlock(&thread_mutex) != 0) {
             fprintf(stderr, "Failed to unlock pthread mutex\nError code: %d\n", errno);
             retval = -1;
-            goto main_cleanup_threads;
+            goto main_cleanup;
         }
+    }
+
+main_cleanup:
+    for (i = 0; i < POOL_SIZE; i++) {
+        PQfinish(conn_pool[i]);
     }
 
 main_cleanup_threads:
@@ -530,11 +581,162 @@ void http_request_free(HttpRequest *parsed_http_request) {
     parsed_http_request->headers = NULL;
 }
 
+typedef struct {
+    char id[37]; /* uuid contains 36 characters */
+    char email[255];
+    char country[80];
+    char full_name[255];
+} User;
+
+typedef struct {
+    User users[4];
+    char columns[ROWS][10]; /* 'full_name' the current largest column name contains 9 characters */
+    unsigned int rows;
+} UsersData;
+
 Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
     Error error = {0};
 
-    char response[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
-                      "<html><body><h1>Hello world!</h1></body></html>";
+    PGconn *conn = conn_pool[thread_index];
+
+    const char query[] = "SELECT u.id, u.email, c.nicename AS country, CONCAT(ui.first_name, ' ', ui.last_name) AS full_name FROM app.users u JOIN app.users_info ui ON u.id = ui.user_id JOIN app.countries c ON ui.country_id = c.id";
+    PGresult *users_result = PQexec(conn, query);
+
+    if (PQresultStatus(users_result) != PGRES_TUPLES_OK) {
+        sprintf(error.message, "%s\nError code: %d\n", PQerrorMessage(conn), errno);
+        error.panic = 0;
+        return error;
+    }
+
+    print_query_result(users_result);
+
+    UsersData result = {0};
+
+    unsigned int users_result_columns = PQnfields(users_result);
+    result.rows = PQntuples(users_result);
+
+    unsigned int i;
+    for (i = 0; i < users_result_columns; ++i) {
+        char *column_name = PQfname(users_result, i);
+        size_t column_name_length = strlen(column_name);
+
+        if (memcpy(result.columns[i], column_name, column_name_length) == NULL) {
+            sprintf(error.message, "Failed to copy column_name into memory buffer\nError code: %d\n", errno);
+            error.panic = 0;
+            return error;
+        }
+
+        result.columns[i][column_name_length] = '\0';
+    }
+
+    for (i = 0; i < result.rows; ++i) {
+        char *id = PQgetvalue(users_result, i, 0);
+        size_t id_length = strlen(id);
+        if (memcpy(result.users[i].id, id, id_length) == NULL) {
+            sprintf(error.message, "Failed to copy id into memory buffer\nError code: %d\n", errno);
+            error.panic = 0;
+            return error;
+        }
+        (result.users)[i].id[id_length] = '\0';
+
+        char *email = PQgetvalue(users_result, i, 1);
+        size_t email_length = strlen(email);
+        if (memcpy(result.users[i].email, email, email_length) == NULL) {
+            sprintf(error.message, "Failed to copy email into memory buffer\nError code: %d\n", errno);
+            error.panic = 0;
+            return error;
+        }
+        result.users[i].email[email_length] = '\0';
+
+        char *country = PQgetvalue(users_result, i, 2);
+        size_t country_length = strlen(country);
+        if (memcpy(result.users[i].country, country, country_length) == NULL) {
+            sprintf(error.message, "Failed to copy country into memory buffer\nError code: %d\n", errno);
+            error.panic = 0;
+            return error;
+        }
+        result.users[i].country[country_length] = '\0';
+
+        char *full_name = PQgetvalue(users_result, i, 3);
+        size_t full_name_length = strlen(full_name);
+        if (memcpy(result.users[i].full_name, full_name, full_name_length) == NULL) {
+            sprintf(error.message, "Failed to copy full_name into memory buffer\nError code: %d\n", errno);
+            error.panic = 0;
+            return error;
+        }
+        result.users[i].full_name[full_name_length] = '\0';
+    }
+
+    PQclear(users_result);
+
+    char response[2000];
+
+    sprintf(response,
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
+            "<html>"
+            "<head>"
+            "    <title>Table Example</title>"
+            "    <style>"
+            "        body {"
+            "            margin: 0;"
+            "        }"
+            "        table {"
+            "            width: 100vw;"
+            "            border-collapse: collapse;"
+            "        }"
+            "        table, th, td {"
+            "            border: 1px solid black;"
+            "        }"
+            "        th, td {"
+            "            padding: 8px;"
+            "            text-align: left;"
+            "        }"
+            "        th {"
+            "            background-color: #f2f2f2;"
+            "        }"
+            "    </style>"
+            "</head>"
+            "<body>"
+            "<h2>Table Example</h2>"
+            "<table>"
+            "    <thead>"
+            "        <tr>"
+            "            <th>%s</th>"
+            "            <th>%s</th>"
+            "            <th>%s</th>"
+            "            <th>%s</th>"
+            "        </tr>"
+            "    </thead>"
+            "    <tbody>"
+            "        <tr>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "        </tr>"
+            "        <tr>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "        </tr>"
+            "        <tr>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "        </tr>"
+            "        <tr>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "            <td>%s</td>"
+            "        </tr>"
+            "    </tbody>"
+            "</table>"
+            "</body>"
+            "</html>",
+            result.columns[0], result.columns[1], result.columns[2], result.columns[3], result.users[0].id, result.users[0].email, result.users[0].country, result.users[0].full_name, result.users[1].id, result.users[1].email, result.users[1].country, result.users[1].full_name, result.users[2].id, result.users[2].email, result.users[2].country, result.users[2].full_name, result.users[3].id, result.users[3].email, result.users[3].country, result.users[3].full_name);
 
     if (send(client_socket, response, strlen(response), 0) == -1) {
         sprintf(error.message, "Failed send HTTP response. Error code: %d", errno);
@@ -562,6 +764,114 @@ Error not_found(int client_socket, HttpRequest *request) {
 
     close(client_socket);
     return error;
+}
+
+/**
+ * @brief      Read values from a file into a structure. Ignores lines that start with '#' (comments).
+ *             The values in the file must adhere to the following rules:
+ *                  1. Each value must be on a new line.
+ *                  2. Values must adhere to the specified order and length defined in the structure
+ *                     they are loaded into.
+ *                  3. values must start inmediately after the equal sign and be contiguous.
+ *                     e.g. =helloworld
+ *
+ * @param[out] structure A structure with fixed-size string fields for each value in the file.
+ * @param      file_path_relative_to_project_root The path to the file from project root.
+ * @return     The amount of values read if success, -1 otherwise.
+ */
+int load_values_from_file(void *structure, const char *file_path_relative_to_project_root) {
+    char cwd[MAX_LENGTH_CWD_PATH];
+    if (getcwd(cwd, MAX_LENGTH_CWD_PATH) == NULL) {
+        fprintf(stderr, "Failed to get current working directory\nError code: %d\n", errno);
+        return -1;
+    }
+
+    char file_absolute_path[MAX_LENGTH_ABSOLUTE_PATH];
+    if (sprintf(file_absolute_path, "%s/%s", cwd, file_path_relative_to_project_root) < 0) {
+        fprintf(stderr, "Absolute path truncated\nError code: %d\n", errno);
+        return -1;
+    }
+
+    FILE *file = fopen(file_absolute_path, "r");
+
+    if (file == NULL) {
+        fprintf(stderr, "Failed to open file\nError code: %d\n", errno);
+        return -1;
+    }
+
+    char line[MAX_LINE_LENGTH];
+
+    size_t structure_element_offset = 0;
+
+    unsigned int read_values_count = 0;
+
+    while (fgets(line, MAX_LINE_LENGTH, file) != NULL) {
+        /** Does line have a comment? */
+        char *hash_position = strchr(line, '#');
+        if (hash_position != NULL) {
+            /** We don't care about comments. Truncate line at the start of a comment */
+            *hash_position = '\0';
+        }
+
+        /** The value we want to read starts after an '=' sign */
+        char *equal_sign = strchr(line, '=');
+        if (equal_sign == NULL) {
+            /** This line does not contain a value, continue to next line */
+            continue;
+        }
+
+        equal_sign++; /** Move the pointer past the '=' character to the beginning of the value */
+
+        size_t value_char_index = 0;
+
+        /** Extract 'value characters' until a 'whitespace' character or null-terminator is encountered */
+        while (*equal_sign != '\0' && !isspace((unsigned char)*equal_sign)) {
+            ((char *)structure)[structure_element_offset + value_char_index] = *equal_sign;
+            value_char_index++;
+            equal_sign++;
+        }
+
+        ((char *)structure)[structure_element_offset + value_char_index] = '\0';
+
+        /** Next element in the structure should start after the read value null-terminator */
+        structure_element_offset += value_char_index + 1;
+        read_values_count++;
+    }
+
+    fclose(file);
+    return read_values_count;
+}
+
+void print_query_result(PGresult *query_result) {
+    const int num_columns = PQnfields(query_result);
+    const int num_rows = PQntuples(query_result);
+
+    int col;
+    int row;
+    int i;
+
+    for (col = 0; col < num_columns; col++) {
+        printf("| %-48s ", PQfname(query_result, col));
+    }
+    printf("|\n");
+
+    printf("|");
+    for (col = 0; col < num_columns; col++) {
+        for (i = 0; i < 50; i++) {
+            printf("-");
+        }
+        printf("|");
+    }
+    printf("\n");
+
+    for (row = 0; row < num_rows; row++) {
+        for (col = 0; col < num_columns; col++) {
+            printf("| %-48s ", PQgetvalue(query_result, row, col));
+        }
+        printf("|\n");
+    }
+
+    printf("\n");
 }
 
 void enqueue_client_socket(int *client_socket) {

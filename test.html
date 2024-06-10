@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;800&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="src/web/static/globals.css" />
+        <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+        <title>Test</title>
+    </head>
+    <body>
+        <table>
+            {{ component hello_world "./component.html" }}
+            <div>
+                {{ if is_admin }}
+                <p>Welcome, {{ .user_name }}!</p>
+                <p>{{ date }}</p>
+                {{ else }}
+                <p>Welcome, user!</p>
+                <p>{{ date }}</p>
+                {{ end }}
+            </div>
+            <div>{{ for text_buttons }} {{ component text_button "./button.html" }} {{ end }}</div>
+            <tr>
+                {{ for users_table_column_names }}
+                <th>{{ . }}</th>
+                {{ end }}
+            </tr>
+            {{ for users_rows }}
+            <tr>
+                {{ for user_row_values }}
+                <td>{{ . }}</td>
+                {{ end }}
+            </tr>
+            {{ end }}
+            <div>{{ phone_number }}</div>
+            <ul>
+                {{ for fruits }}
+                <li>{{ .name }}: {{ .price }}</li>
+                <!-- key name after the "." it's always optional because they are scoped to the if/for block -->
+                {{ end }}
+            </ul>
+        </table>
+        <div>
+            {{ for countries_rows }} {{ for country_values }}
+            <div>{{ . }}</div>
+            {{ end }} {{ end }}
+        </div>
+        <!-- <script defer src="src/web/pages/home/home.js"></script> -->
+    </body>
+</html>

@@ -18,10 +18,14 @@
 #define PANIC 1
 
 #define MAX_LINE_LENGTH 100
-#define MAX_LENGTH_CWD_PATH 100
 #define MAX_LENGTH_ABSOLUTE_PATH 200
+#define MAX_LENGTH_RELATIVE_PATH 100
+#define MAX_LENGTH_COMPONENT_NAME 100
 
 #define ROWS 4
+
+#define MAX_PROJECT_ROOT_PATH_LENGTH 100
+#define PROJECT_ROOT_PATH "/workspaces/web-server/"
 
 typedef struct ClientSocketQueueNode {
     struct ClientSocketQueueNode *next;
@@ -51,6 +55,77 @@ typedef struct {
     char *body;
 } HttpRequest;
 
+typedef struct Template Template;
+
+#define MAX_LENGTH_BLOCK_NAME 100
+typedef struct {
+    enum { FOR, IF } type;
+    char name[MAX_LENGTH_BLOCK_NAME];
+    struct {
+        unsigned int start;
+        unsigned int end;
+        char *html;
+    } html_block;
+    struct {
+        unsigned int start;
+        unsigned int end;
+        char *html_lookup_reference;
+    } lookup;
+} ActionBlock;
+
+typedef struct {
+    struct {
+        unsigned int start;
+        unsigned int end;
+        char *html_lookup_reference;
+    } lookup;
+    Template *component;
+} Component;
+
+struct Template {
+    char path[MAX_LENGTH_ABSOLUTE_PATH];
+    char *html;
+    size_t html_length;
+    ActionBlock *blocks;
+    uint8_t blocks_length;
+    Component **components;
+};
+
+/* clang-format off */
+#define STATUS_PATH PROJECT_ROOT_PATH "status.html"
+Template status = {STATUS_PATH, NULL, (112 + 1), NULL, 0, NULL};
+
+Component __component_status = {{113, 146, NULL}, &status};
+
+#define MAX_BUTTON_COMPONENTS 1
+Component *button__components[MAX_BUTTON_COMPONENTS] = {
+    &__component_status,
+};
+
+#define BUTTON_PATH PROJECT_ROOT_PATH "button.html"
+Template button = {BUTTON_PATH, NULL, (162 + 1), NULL, 0, button__components};
+
+#define MAX_DEFAULT_PAGE_BLOCKS 2
+ActionBlock default_page__blocks[MAX_DEFAULT_PAGE_BLOCKS] = {
+    {FOR, "clickable_buttons", {774, 818, NULL}, {738, 836, NULL}}, 
+};
+
+Component __component_button = {{779, 812, NULL}, &button};
+
+#define MAX_DEFAULT_PAGE_COMPONENTS 1
+Component *default_page__components[MAX_DEFAULT_PAGE_COMPONENTS] = {
+    &__component_button,
+};
+
+#define DEFAULT_PAGE_PATH PROJECT_ROOT_PATH "default.html"
+Template default_page = {DEFAULT_PAGE_PATH, NULL, (857 + 1), default_page__blocks, MAX_DEFAULT_PAGE_BLOCKS, default_page__components};
+
+#define MAX_TEMPLATES 1
+Template *templates[MAX_TEMPLATES] = {
+    &default_page,
+};
+/* clang-format on */
+
 void sigint_handler(int signo);
 Error router(void *p_client_socket, uint8_t thread_index);
 void *thread_function(void *arg);
@@ -61,8 +136,10 @@ Error read_request(char **request_buffer, int client_socket);
 Error parse_http_request(HttpRequest *parsed_http_request, const char *http_request);
 void http_request_free(HttpRequest *parsed_http_request);
 Error not_found(int client_socket, HttpRequest *request);
-Error load_values_from_file(void *structure, const char *file_path_relative_to_project_root);
+Error load_values_from_file(void *structure, const char *project_root_path, const char *file_path_relative_to_project_root);
 void print_query_result(PGresult *query_result);
+Error read_file(char **buffer, char *absolute_file_path, size_t file_size);
+Error calculate_file_size(long *file_size, char *absolute_file_path);
 
 #define MAX_CONNECTIONS 100
 #define POOL_SIZE 1
@@ -94,9 +171,92 @@ int main() {
         goto main_exit;
     }
 
+    /** Load default page template */
+    default_page.html = (char *)calloc(default_page.html_length, sizeof(char));
+    if (default_page.html == NULL) {
+        fprintf(stderr, "Failed to allocate memory for default_page.html\nError code: %d\n", errno);
+        /** TODO */
+    }
+
+    if ((error = read_file(&(default_page.html), default_page.path, (default_page.html_length - 1))).panic) {
+        /** TODO */
+    }
+
+    default_page.html[default_page.html_length - 1] = '\0';
+
+    /** Copy default page blocks (html_block & lookup) */
+    for (i = 0; i < default_page.blocks_length; i++) {
+        size_t block_start = default_page.blocks[i].html_block.start;
+        size_t block_end = default_page.blocks[i].html_block.end;
+
+        size_t block_length = (block_end - block_start) + 1;
+
+        default_page.blocks[i].html_block.html = (char *)calloc(block_length, sizeof(char));
+        if (default_page.blocks[i].html_block.html == NULL) {
+            fprintf(stderr, "Failed to allocate memory for default_page.blocks[i].html_block.html\nError code: %d\n", errno);
+            /** TODO */
+        }
+
+        if (memcpy(default_page.blocks[i].html_block.html, default_page.html + block_start, (block_length - 1)) == NULL) {
+            /** TODO */
+        }
+
+        default_page.blocks[i].html_block.html[block_length - 1] = '\0';
+
+        size_t lookup_start = default_page.blocks[i].lookup.start;
+        size_t lookup_end = default_page.blocks[i].lookup.end;
+
+        size_t lookup_length = (lookup_end - lookup_start) + 1;
+
+        default_page.blocks[i].lookup.html_lookup_reference = (char *)calloc(lookup_length, sizeof(char));
+        if (default_page.blocks[i].lookup.html_lookup_reference == NULL) {
+            fprintf(stderr, "Failed to allocate memory for default_page.blocks[i].lookup.html_lookup_reference\nError code: %d\n", errno);
+            /** TODO */
+        }
+
+        if (memcpy(default_page.blocks[i].lookup.html_lookup_reference, default_page.html + lookup_start, (lookup_length - 1)) == NULL) {
+            /** TODO */
+        }
+
+        default_page.blocks[i].lookup.html_lookup_reference[lookup_length - 1] = '\0';
+    }
+
+    /** Load button template */
+    button.html = (char *)calloc(button.html_length, sizeof(char));
+    if (button.html == NULL) {
+        fprintf(stderr, "Failed to allocate memory for button.html\nError code: %d\n", errno);
+        /** TODO */
+    }
+
+    if ((error = read_file(&(button.html), button.path, (button.html_length - 1))).panic) {
+        /** TODO */
+    }
+
+    button.html[button.html_length - 1] = '\0';
+
+    /** Load status template */
+    status.html = (char *)calloc(status.html_length, sizeof(char));
+    if (status.html == NULL) {
+        fprintf(stderr, "Failed to allocate memory for status.html\nError code: %d\n", errno);
+        /** TODO */
+    }
+
+    if ((error = read_file(&(status.html), status.path, (status.html_length - 1))).panic) {
+        /** TODO */
+    }
+
+    status.html[status.html_length - 1] = '\0';
+
+    /**
+     * How to render a block inside a html template?
+     * 1. A template has been redendered with several blocks already so addresses are useless at this point
+     * 2. Use the reference lookup to find the end of there the new block will be put
+     * 3. Count from the end of the block to the end of the template and that's the 'after'
+     */
+
     ENV env = {0};
     const char env_file_path[] = ".env";
-    if ((error = load_values_from_file(&env, env_file_path)).panic) {
+    if ((error = load_values_from_file(&env, PROJECT_ROOT_PATH, env_file_path)).panic) {
         retval = -1;
         goto main_exit;
     }
@@ -253,7 +413,9 @@ main_cleanup_socket:
     close(server_socket);
 
 main_exit:
-    printf("%s", error.message);
+    printf("%s\n", error.message);
+
+    /* TODO: Free templates */
 
     return retval;
 }
@@ -363,7 +525,7 @@ Error read_request(char **request_buffer, int client_socket) {
     Error error = {0};
     size_t buffer_size = 1024;
 
-    *request_buffer = (char *)malloc((buffer_size * (sizeof **request_buffer)) + 1);
+    *request_buffer = (char *)calloc(buffer_size + 1, sizeof(char));
     if (*request_buffer == NULL) {
         sprintf(error.message, "Failed to allocate memory for *request_buffer. Error code: %d", errno);
         error.panic = 1;
@@ -468,7 +630,7 @@ Error parse_http_request(HttpRequest *parsed_http_request, const char *http_requ
     parsed_http_request->url[url_len] = '\0';
 
     if (query_params_length > 0) {
-        parsed_http_request->query_params = (char *)malloc(query_params_length * (sizeof parsed_http_request->query_params) + 1);
+        parsed_http_request->query_params = (char *)calloc(query_params_length + 1, sizeof(char));
         if (parsed_http_request->query_params == NULL) {
             sprintf(error.message, "Failed to allocate memory for parsed_http_request->query_params. Error code: %d", errno);
             error.panic = 1;
@@ -528,7 +690,7 @@ Error parse_http_request(HttpRequest *parsed_http_request, const char *http_requ
     }
 
     size_t headers_len = headers_end - headers_start;
-    parsed_http_request->headers = (char *)malloc(headers_len * (sizeof parsed_http_request->headers) + 1);
+    parsed_http_request->headers = (char *)calloc(headers_len + 1, sizeof(char));
     if (parsed_http_request->headers == NULL) {
         sprintf(error.message, "Failed to allocate memory for parsed_http_request->headers. Error code: %d", errno);
         error.panic = 1;
@@ -557,7 +719,7 @@ Error parse_http_request(HttpRequest *parsed_http_request, const char *http_requ
 
     size_t body_length = body_end - body_start;
     if (body_length > 0) {
-        parsed_http_request->body = (char *)malloc(body_length * (sizeof parsed_http_request->body) + 1);
+        parsed_http_request->body = (char *)calloc(body_length + 1, sizeof(char));
         if (parsed_http_request->body == NULL) {
             sprintf(error.message, "Failed to allocate memory for parsed_http_request->body. Error code: %d", errno);
             error.panic = 1;
@@ -589,19 +751,6 @@ void http_request_free(HttpRequest *parsed_http_request) {
     parsed_http_request->headers = NULL;
 }
 
-typedef struct {
-    char id[37]; /* uuid contains 36 characters */
-    char email[255];
-    char country[80];
-    char full_name[255];
-} User;
-
-typedef struct {
-    User users[4];
-    char columns[ROWS][10]; /* 'full_name' the current largest column name contains 9 characters */
-    unsigned int rows;
-} UsersData;
-
 Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
     Error error = {0};
 
@@ -618,133 +767,8 @@ Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
 
     print_query_result(users_result);
 
-    UsersData result = {0};
-
-    unsigned int users_result_columns = PQnfields(users_result);
-    result.rows = PQntuples(users_result);
-
-    unsigned int i;
-    for (i = 0; i < users_result_columns; ++i) {
-        char *column_name = PQfname(users_result, i);
-        size_t column_name_length = strlen(column_name);
-
-        if (memcpy(result.columns[i], column_name, column_name_length) == NULL) {
-            sprintf(error.message, "Failed to copy column_name into memory buffer\nError code: %d\n", errno);
-            error.panic = PANIC;
-            return error;
-        }
-
-        result.columns[i][column_name_length] = '\0';
-    }
-
-    for (i = 0; i < result.rows; ++i) {
-        char *id = PQgetvalue(users_result, i, 0);
-        size_t id_length = strlen(id);
-        if (memcpy(result.users[i].id, id, id_length) == NULL) {
-            sprintf(error.message, "Failed to copy id into memory buffer\nError code: %d\n", errno);
-            error.panic = PANIC;
-            return error;
-        }
-        (result.users)[i].id[id_length] = '\0';
-
-        char *email = PQgetvalue(users_result, i, 1);
-        size_t email_length = strlen(email);
-        if (memcpy(result.users[i].email, email, email_length) == NULL) {
-            sprintf(error.message, "Failed to copy email into memory buffer\nError code: %d\n", errno);
-            error.panic = PANIC;
-            return error;
-        }
-        result.users[i].email[email_length] = '\0';
-
-        char *country = PQgetvalue(users_result, i, 2);
-        size_t country_length = strlen(country);
-        if (memcpy(result.users[i].country, country, country_length) == NULL) {
-            sprintf(error.message, "Failed to copy country into memory buffer\nError code: %d\n", errno);
-            error.panic = PANIC;
-            return error;
-        }
-        result.users[i].country[country_length] = '\0';
-
-        char *full_name = PQgetvalue(users_result, i, 3);
-        size_t full_name_length = strlen(full_name);
-        if (memcpy(result.users[i].full_name, full_name, full_name_length) == NULL) {
-            sprintf(error.message, "Failed to copy full_name into memory buffer\nError code: %d\n", errno);
-            error.panic = PANIC;
-            return error;
-        }
-        result.users[i].full_name[full_name_length] = '\0';
-    }
-
-    PQclear(users_result);
-
-    char response[2000];
-
-    sprintf(response,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
-            "<html>"
-            "<head>"
-            "    <title>Table Example</title>"
-            "    <style>"
-            "        body {"
-            "            margin: 0;"
-            "        }"
-            "        table {"
-            "            width: 100vw;"
-            "            border-collapse: collapse;"
-            "        }"
-            "        table, th, td {"
-            "            border: 1px solid black;"
-            "        }"
-            "        th, td {"
-            "            padding: 8px;"
-            "            text-align: left;"
-            "        }"
-            "        th {"
-            "            background-color: #f2f2f2;"
-            "        }"
-            "    </style>"
-            "</head>"
-            "<body>"
-            "<h2>Table Example</h2>"
-            "<table>"
-            "    <thead>"
-            "        <tr>"
-            "            <th>%s</th>"
-            "            <th>%s</th>"
-            "            <th>%s</th>"
-            "            <th>%s</th>"
-            "        </tr>"
-            "    </thead>"
-            "    <tbody>"
-            "        <tr>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "        </tr>"
-            "        <tr>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "        </tr>"
-            "        <tr>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "        </tr>"
-            "        <tr>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "            <td>%s</td>"
-            "        </tr>"
-            "    </tbody>"
-            "</table>"
-            "</body>"
-            "</html>",
-            result.columns[0], result.columns[1], result.columns[2], result.columns[3], result.users[0].id, result.users[0].email, result.users[0].country, result.users[0].full_name, result.users[1].id, result.users[1].email, result.users[1].country, result.users[1].full_name, result.users[2].id, result.users[2].email, result.users[2].country, result.users[2].full_name, result.users[3].id, result.users[3].email, result.users[3].country, result.users[3].full_name);
+    char response[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
+                      "<html><body><h1>Hello world!</h1></body></html>";
 
     if (send(client_socket, response, strlen(response), 0) == -1) {
         sprintf(error.message, "Failed send HTTP response. Error code: %d", errno);
@@ -784,21 +808,15 @@ Error not_found(int client_socket, HttpRequest *request) {
  *                     e.g. =helloworld
  *
  * @param[out] structure A structure with fixed-size string fields for each value in the file.
+ * @param      project_root_path The path to project root.
  * @param      file_path_relative_to_project_root The path to the file from project root.
  * @return     Error information if an error occurs.
  */
-Error load_values_from_file(void *structure, const char *file_path_relative_to_project_root) {
+Error load_values_from_file(void *structure, const char *project_root_path, const char *file_path_relative_to_project_root) {
     Error error = {0};
 
-    char cwd[MAX_LENGTH_CWD_PATH];
-    if (getcwd(cwd, MAX_LENGTH_CWD_PATH) == NULL) {
-        sprintf(error.message, "Failed to get current working directory. Error code: %d", errno);
-        error.panic = 1;
-        return error;
-    }
-
     char file_absolute_path[MAX_LENGTH_ABSOLUTE_PATH];
-    if (sprintf(file_absolute_path, "%s/%s", cwd, file_path_relative_to_project_root) < 0) {
+    if (sprintf(file_absolute_path, "%s/%s", project_root_path, file_path_relative_to_project_root) < 0) {
         sprintf(error.message, "Absolute path truncated. Error code: %d", errno);
         error.panic = 1;
         return error;
@@ -855,13 +873,76 @@ Error load_values_from_file(void *structure, const char *file_path_relative_to_p
     return error;
 }
 
+Error read_file(char **buffer, char *absolute_file_path, size_t file_size) {
+    Error error = {0};
+
+    FILE *file = fopen(absolute_file_path, "r");
+
+    if (file == NULL) {
+        sprintf(error.message, "Failed to open file. Error code: %d", errno);
+        error.panic = PANIC;
+        return error;
+    }
+
+    if (fread(*buffer, sizeof(char), file_size, file) != file_size) {
+        if (feof(file)) {
+            sprintf(error.message, "End of file reached before reading all elements. Error code: %d", errno);
+        }
+
+        if (ferror(file)) {
+            sprintf(error.message, "An error occurred during the fread operation. Error code: %d", errno);
+        }
+
+        fclose(file);
+
+        error.panic = PANIC;
+        return error;
+    }
+
+    fclose(file);
+
+    return error;
+}
+
+Error calculate_file_size(long *file_size, char *absolute_file_path) {
+    Error error = {0};
+
+    FILE *file = fopen(absolute_file_path, "r");
+
+    if (file == NULL) {
+        sprintf(error.message, "Failed to open file. Error code: %d", errno);
+        error.panic = PANIC;
+        return error;
+    }
+
+    if (fseek(file, 0, SEEK_END) == -1) {
+        fclose(file);
+        sprintf(error.message, "Failed to move the 'file position indicator' to the end of the file. Error code: %d", errno);
+        error.panic = PANIC;
+        return error;
+    }
+
+    *file_size = ftell(file);
+    if (*file_size == -1) {
+        fclose(file);
+        sprintf(error.message, "Failed to determine the current 'file position indicator' of the file. Error code: %d", errno);
+        error.panic = PANIC;
+        return error;
+    }
+
+    rewind(file);
+    fclose(file);
+
+    return error;
+}
+
 void print_query_result(PGresult *query_result) {
     const int num_columns = PQnfields(query_result);
     const int num_rows = PQntuples(query_result);
 
-    int col;
-    int row;
-    int i;
+    int col = 0;
+    int row = 0;
+    int i = 0;
 
     for (col = 0; col < num_columns; col++) {
         printf("| %-48s ", PQfname(query_result, col));

@@ -56,7 +56,7 @@ Error read_request(char **request_buffer, int client_socket);
 Error parse_http_request(HttpRequest *parsed_http_request, const char *http_request);
 void http_request_free(HttpRequest *parsed_http_request);
 Error not_found(int client_socket, HttpRequest *request);
-int load_values_from_file(void *structure, const char *file_path_relative_to_project_root);
+Error load_values_from_file(void *structure, const char *file_path_relative_to_project_root);
 void print_query_result(PGresult *query_result);
 
 #define MAX_CONNECTIONS 100
@@ -77,6 +77,8 @@ int main() {
     int retval = 0;
     uint8_t i;
 
+    Error error = {0};
+
     /**
      * Registers a signal handler for SIGINT (to terminate the process)
      * to exit the program gracefully for Valgrind to show the program report.
@@ -89,8 +91,7 @@ int main() {
 
     ENV env = {0};
     const char env_file_path[] = ".env";
-    if (load_values_from_file(&env, env_file_path) == -1) {
-        fprintf(stderr, "Failed to load env variables from file %s\nError code: %d\n", env_file_path, errno);
+    if ((error = load_values_from_file(&env, env_file_path)).panic) {
         retval = -1;
         goto main_exit;
     }
@@ -247,6 +248,8 @@ main_cleanup_socket:
     close(server_socket);
 
 main_exit:
+    printf("%s", error.message);
+
     return retval;
 }
 
@@ -777,26 +780,31 @@ Error not_found(int client_socket, HttpRequest *request) {
  *
  * @param[out] structure A structure with fixed-size string fields for each value in the file.
  * @param      file_path_relative_to_project_root The path to the file from project root.
- * @return     The amount of values read if success, -1 otherwise.
+ * @return     Error information if an error occurs.
  */
-int load_values_from_file(void *structure, const char *file_path_relative_to_project_root) {
+Error load_values_from_file(void *structure, const char *file_path_relative_to_project_root) {
+    Error error = {0};
+
     char cwd[MAX_LENGTH_CWD_PATH];
     if (getcwd(cwd, MAX_LENGTH_CWD_PATH) == NULL) {
-        fprintf(stderr, "Failed to get current working directory\nError code: %d\n", errno);
-        return -1;
+        sprintf(error.message, "Failed to get current working directory. Error code: %d", errno);
+        error.panic = 1;
+        return error;
     }
 
     char file_absolute_path[MAX_LENGTH_ABSOLUTE_PATH];
     if (sprintf(file_absolute_path, "%s/%s", cwd, file_path_relative_to_project_root) < 0) {
-        fprintf(stderr, "Absolute path truncated\nError code: %d\n", errno);
-        return -1;
+        sprintf(error.message, "Absolute path truncated. Error code: %d", errno);
+        error.panic = 1;
+        return error;
     }
 
     FILE *file = fopen(file_absolute_path, "r");
 
     if (file == NULL) {
-        fprintf(stderr, "Failed to open file\nError code: %d\n", errno);
-        return -1;
+        sprintf(error.message, "Failed to open file. Error code: %d", errno);
+        error.panic = 1;
+        return error;
     }
 
     char line[MAX_LINE_LENGTH];
@@ -839,7 +847,7 @@ int load_values_from_file(void *structure, const char *file_path_relative_to_pro
     }
 
     fclose(file);
-    return read_values_count;
+    return error;
 }
 
 void print_query_result(PGresult *query_result) {

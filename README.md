@@ -43,11 +43,12 @@ The `devcontainer.json` file will configure most of your environment, but you'll
 ### Local setup
 
 Before running the project locally, make sure you have these tools installed:
-- GCC
-- GDB
-- Curl (optipnal)
-- Valgrind (optipnal)
-- Git (optional)
+
+-   GCC
+-   GDB
+-   Curl (optipnal)
+-   Valgrind (optipnal)
+-   Git (optional)
 
 ## ⇁ Running the project
 
@@ -75,11 +76,11 @@ To exit the program, press CTRL+C (`^C`) at the terminal window. The server will
 
 ## ⇁ Code style
 
-- Functions return errors as values. During server setup, a panic is triggered if an error occurs. During request handling, error data is sent to the client if possible.
+-   Functions return errors as values. During server setup, a panic is triggered if an error occurs. During request handling, error data is sent to the client if possible.
 
-- Functions receive an uninitialized buffer, intended to store the return data, as their first argument and are responsible for allocating memory for this buffer. If the function fails, it should also free the buffer. If the function succeeds, it becomes the calling function's responsibility to free the buffer after use.
+-   Functions receive an uninitialized buffer, intended to store the return data, as their first argument and are responsible for allocating memory for this buffer. If the function fails, it should also free the buffer. If the function succeeds, it becomes the calling function's responsibility to free the buffer after use.
 
-- The use of `goto` when errors occur helps reduce redundant cleanup code.
+-   The use of `goto` when errors occur helps reduce redundant cleanup code.
 
 ```c
 Error my_function(SomeStruct *buffer) {
@@ -92,7 +93,7 @@ Error my_function(SomeStruct *buffer) {
         error.panic = DEBUG;
         return error;
     }
-    
+
     char some_string[] = "hello world!";
     if (memcpy(buffer->foo, some_string, strlen(some_string)) == NULL) {
         sprintf(error.message, "Failed to copy data to buffer->foo");
@@ -117,7 +118,7 @@ Error parent_function() {
 
 parent_function_cleanup:
     /** ... */
-    
+
     some_struct_free(&buffer); /** Free allocated memory */
 
     return error;
@@ -125,9 +126,11 @@ parent_function_cleanup:
 ```
 
 ## ⇁ Features
+
 Coming soon...
 
 ## ⇁ Feedback
+
 I'd love to hear from you! Please share your feedback by opening an issue.
 
 ## ⇁ Contribution
@@ -136,8 +139,8 @@ While this project is publicly available, it is not open for contributions. Howe
 
 ## ⇁ Social
 
-* [LinkedIn](https://www.linkedin.com/in/roy-salazar-a93b0b192/)
-* [Twitter](https://x.com/roysalazardev)
+-   [LinkedIn](https://www.linkedin.com/in/roy-salazar-a93b0b192/)
+-   [Twitter](https://x.com/roysalazardev)
 
 ## ⇁ Acknowledgements
 

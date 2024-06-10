@@ -2,10 +2,7 @@
     "configurations": [
         {
             "name": "Linux",
-            "includePath": [
-                "${workspaceFolder}/**",
-                "/usr/include/postgresql"
-            ],
+            "includePath": ["${workspaceFolder}/**", "/usr/include/postgresql"],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "c17",

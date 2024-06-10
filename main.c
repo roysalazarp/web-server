@@ -10,7 +10,12 @@
 #include <string.h>
 #include <unistd.h>
 
-#define DEBUG 0; /** Panic should only happen in server initialization functions when in production or in all functions when in development. */
+/**
+ * In development mode, set PANIC to 1 to force program crash on error.
+ * In production, set PANIC to 0 and try to recover from error.
+ * TODO: This variable should be set at compile time, not hardcoded.
+ */
+#define PANIC 1
 
 #define MAX_LINE_LENGTH 100
 #define MAX_LENGTH_CWD_PATH 100
@@ -607,7 +612,7 @@ Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
 
     if (PQresultStatus(users_result) != PGRES_TUPLES_OK) {
         sprintf(error.message, "%s\nError code: %d\n", PQerrorMessage(conn), errno);
-        error.panic = 0;
+        error.panic = PANIC;
         return error;
     }
 
@@ -625,7 +630,7 @@ Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
 
         if (memcpy(result.columns[i], column_name, column_name_length) == NULL) {
             sprintf(error.message, "Failed to copy column_name into memory buffer\nError code: %d\n", errno);
-            error.panic = 0;
+            error.panic = PANIC;
             return error;
         }
 
@@ -637,7 +642,7 @@ Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
         size_t id_length = strlen(id);
         if (memcpy(result.users[i].id, id, id_length) == NULL) {
             sprintf(error.message, "Failed to copy id into memory buffer\nError code: %d\n", errno);
-            error.panic = 0;
+            error.panic = PANIC;
             return error;
         }
         (result.users)[i].id[id_length] = '\0';
@@ -646,7 +651,7 @@ Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
         size_t email_length = strlen(email);
         if (memcpy(result.users[i].email, email, email_length) == NULL) {
             sprintf(error.message, "Failed to copy email into memory buffer\nError code: %d\n", errno);
-            error.panic = 0;
+            error.panic = PANIC;
             return error;
         }
         result.users[i].email[email_length] = '\0';
@@ -655,7 +660,7 @@ Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
         size_t country_length = strlen(country);
         if (memcpy(result.users[i].country, country, country_length) == NULL) {
             sprintf(error.message, "Failed to copy country into memory buffer\nError code: %d\n", errno);
-            error.panic = 0;
+            error.panic = PANIC;
             return error;
         }
         result.users[i].country[country_length] = '\0';
@@ -664,7 +669,7 @@ Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
         size_t full_name_length = strlen(full_name);
         if (memcpy(result.users[i].full_name, full_name, full_name_length) == NULL) {
             sprintf(error.message, "Failed to copy full_name into memory buffer\nError code: %d\n", errno);
-            error.panic = 0;
+            error.panic = PANIC;
             return error;
         }
         result.users[i].full_name[full_name_length] = '\0';
@@ -743,7 +748,7 @@ Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
 
     if (send(client_socket, response, strlen(response), 0) == -1) {
         sprintf(error.message, "Failed send HTTP response. Error code: %d", errno);
-        error.panic = 0;
+        error.panic = PANIC;
         close(client_socket);
         return error;
     }
@@ -760,7 +765,7 @@ Error not_found(int client_socket, HttpRequest *request) {
 
     if (send(client_socket, response, strlen(response), 0) == -1) {
         sprintf(error.message, "Failed send HTTP response. Error code: %d", errno);
-        error.panic = 0;
+        error.panic = PANIC;
         close(client_socket);
         return error;
     }

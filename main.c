@@ -64,12 +64,12 @@ typedef struct {
     struct {
         unsigned int start;
         unsigned int end;
-        char *html;
-    } html_block;
+        char *content;
+    } html;
     struct {
         unsigned int start;
         unsigned int end;
-        char *html_lookup_reference;
+        char *reference;
     } lookup;
 } ActionBlock;
 
@@ -77,23 +77,24 @@ typedef struct {
     struct {
         unsigned int start;
         unsigned int end;
-        char *html_lookup_reference;
+        char *reference;
     } lookup;
     Template *component;
 } Component;
 
 struct Template {
     char path[MAX_LENGTH_ABSOLUTE_PATH];
-    char *html;
-    size_t html_length;
+    char *html_content;
+    size_t html_content_length;
     ActionBlock *blocks;
     uint8_t blocks_length;
     Component **components;
+    uint8_t components_length;
 };
 
 /* clang-format off */
 #define STATUS_PATH PROJECT_ROOT_PATH "status.html"
-Template status = {STATUS_PATH, NULL, (112 + 1), NULL, 0, NULL};
+Template status = {STATUS_PATH, NULL, (112 + 1), NULL, 0, NULL, 0};
 
 Component __component_status = {{113, 146, NULL}, &status};
 
@@ -103,7 +104,7 @@ Component *button__components[MAX_BUTTON_COMPONENTS] = {
 };
 
 #define BUTTON_PATH PROJECT_ROOT_PATH "button.html"
-Template button = {BUTTON_PATH, NULL, (162 + 1), NULL, 0, button__components};
+Template button = {BUTTON_PATH, NULL, (162 + 1), NULL, 0, button__components, MAX_BUTTON_COMPONENTS};
 
 #define MAX_DEFAULT_PAGE_BLOCKS 2
 ActionBlock default_page__blocks[MAX_DEFAULT_PAGE_BLOCKS] = {
@@ -118,7 +119,7 @@ Component *default_page__components[MAX_DEFAULT_PAGE_COMPONENTS] = {
 };
 
 #define DEFAULT_PAGE_PATH PROJECT_ROOT_PATH "default.html"
-Template default_page = {DEFAULT_PAGE_PATH, NULL, (857 + 1), default_page__blocks, MAX_DEFAULT_PAGE_BLOCKS, default_page__components};
+Template default_page = {DEFAULT_PAGE_PATH, NULL, (857 + 1), default_page__blocks, MAX_DEFAULT_PAGE_BLOCKS, default_page__components, MAX_DEFAULT_PAGE_COMPONENTS};
 
 #define MAX_TEMPLATES 1
 Template *templates[MAX_TEMPLATES] = {
@@ -171,88 +172,120 @@ int main() {
         goto main_exit;
     }
 
-    /** Load default page template */
-    default_page.html = (char *)calloc(default_page.html_length, sizeof(char));
-    if (default_page.html == NULL) {
-        fprintf(stderr, "Failed to allocate memory for default_page.html\nError code: %d\n", errno);
+    /* ====================================================================== */
+    /*                   RESOLVE TEMPLATES AND ACTION BLOCKS                  */
+    /* ====================================================================== */
+
+    /*****************************[ DEFAULT PAGE ]*****************************/
+
+    default_page.html_content = (char *)calloc(default_page.html_content_length, sizeof(char));
+    if (default_page.html_content == NULL) {
+        fprintf(stderr, "Failed to allocate memory for default_page.html_content\nError code: %d\n", errno);
         /** TODO */
     }
 
-    if ((error = read_file(&(default_page.html), default_page.path, (default_page.html_length - 1))).panic) {
+    if ((error = read_file(&(default_page.html_content), default_page.path, (default_page.html_content_length - 1))).panic) {
         /** TODO */
     }
 
-    default_page.html[default_page.html_length - 1] = '\0';
+    default_page.html_content[default_page.html_content_length - 1] = '\0';
 
-    /** Copy default page blocks (html_block & lookup) */
     for (i = 0; i < default_page.blocks_length; i++) {
-        size_t block_start = default_page.blocks[i].html_block.start;
-        size_t block_end = default_page.blocks[i].html_block.end;
+        size_t block_html_content_length = (default_page.blocks[i].html.end - default_page.blocks[i].html.start) + 1;
 
-        size_t block_length = (block_end - block_start) + 1;
-
-        default_page.blocks[i].html_block.html = (char *)calloc(block_length, sizeof(char));
-        if (default_page.blocks[i].html_block.html == NULL) {
-            fprintf(stderr, "Failed to allocate memory for default_page.blocks[i].html_block.html\nError code: %d\n", errno);
+        default_page.blocks[i].html.content = (char *)calloc(block_html_content_length, sizeof(char));
+        if (default_page.blocks[i].html.content == NULL) {
+            fprintf(stderr, "Failed to allocate memory for default_page.blocks[i].html.content\nError code: %d\n", errno);
             /** TODO */
         }
 
-        if (memcpy(default_page.blocks[i].html_block.html, default_page.html + block_start, (block_length - 1)) == NULL) {
+        if (memcpy(default_page.blocks[i].html.content, default_page.html_content + default_page.blocks[i].html.start, (block_html_content_length - 1)) == NULL) {
             /** TODO */
         }
 
-        default_page.blocks[i].html_block.html[block_length - 1] = '\0';
+        default_page.blocks[i].html.content[block_html_content_length - 1] = '\0';
 
-        size_t lookup_start = default_page.blocks[i].lookup.start;
-        size_t lookup_end = default_page.blocks[i].lookup.end;
+        size_t block_lookup_reference_length = (default_page.blocks[i].lookup.end - default_page.blocks[i].lookup.start) + 1;
 
-        size_t lookup_length = (lookup_end - lookup_start) + 1;
-
-        default_page.blocks[i].lookup.html_lookup_reference = (char *)calloc(lookup_length, sizeof(char));
-        if (default_page.blocks[i].lookup.html_lookup_reference == NULL) {
-            fprintf(stderr, "Failed to allocate memory for default_page.blocks[i].lookup.html_lookup_reference\nError code: %d\n", errno);
+        default_page.blocks[i].lookup.reference = (char *)calloc(block_lookup_reference_length, sizeof(char));
+        if (default_page.blocks[i].lookup.reference == NULL) {
+            fprintf(stderr, "Failed to allocate memory for default_page.blocks[i].lookup.reference\nError code: %d\n", errno);
             /** TODO */
         }
 
-        if (memcpy(default_page.blocks[i].lookup.html_lookup_reference, default_page.html + lookup_start, (lookup_length - 1)) == NULL) {
+        if (memcpy(default_page.blocks[i].lookup.reference, default_page.html_content + default_page.blocks[i].lookup.start, (block_lookup_reference_length - 1)) == NULL) {
             /** TODO */
         }
 
-        default_page.blocks[i].lookup.html_lookup_reference[lookup_length - 1] = '\0';
+        default_page.blocks[i].lookup.reference[block_lookup_reference_length - 1] = '\0';
     }
 
-    /** Load button template */
-    button.html = (char *)calloc(button.html_length, sizeof(char));
-    if (button.html == NULL) {
-        fprintf(stderr, "Failed to allocate memory for button.html\nError code: %d\n", errno);
+    /**************************[  BUTTON COMPONENT ]***************************/
+
+    button.html_content = (char *)calloc(button.html_content_length, sizeof(char));
+    if (button.html_content == NULL) {
+        fprintf(stderr, "Failed to allocate memory for button.html_content\nError code: %d\n", errno);
         /** TODO */
     }
 
-    if ((error = read_file(&(button.html), button.path, (button.html_length - 1))).panic) {
+    if ((error = read_file(&(button.html_content), button.path, (button.html_content_length - 1))).panic) {
         /** TODO */
     }
 
-    button.html[button.html_length - 1] = '\0';
+    button.html_content[button.html_content_length - 1] = '\0';
 
-    /** Load status template */
-    status.html = (char *)calloc(status.html_length, sizeof(char));
-    if (status.html == NULL) {
-        fprintf(stderr, "Failed to allocate memory for status.html\nError code: %d\n", errno);
+    /**************************[  STATUS COMPONENT ]***************************/
+
+    status.html_content = (char *)calloc(status.html_content_length, sizeof(char));
+    if (status.html_content == NULL) {
+        fprintf(stderr, "Failed to allocate memory for status.html_content\nError code: %d\n", errno);
         /** TODO */
     }
 
-    if ((error = read_file(&(status.html), status.path, (status.html_length - 1))).panic) {
+    if ((error = read_file(&(status.html_content), status.path, (status.html_content_length - 1))).panic) {
         /** TODO */
     }
 
-    status.html[status.html_length - 1] = '\0';
+    status.html_content[status.html_content_length - 1] = '\0';
 
-    /**
-     * How to render a block inside a html template?
-     * 1. A template has been redendered with several blocks already so addresses are useless at this point
-     * 2. Use the reference lookup to find the end of there the new block will be put
-     * 3. Count from the end of the block to the end of the template and that's the 'after'
-     */
+    /* ====================================================================== */
+    /*                        RESOLVE TEMPLATE COMPONENTS                     */
+    /* ====================================================================== */
+
+    /*****************************[ DEFAULT PAGE ]*****************************/
+
+    for (i = 0; i < default_page.components_length; i++) {
+        size_t l1_component_lookup_reference_length = (default_page.components[i]->lookup.end - default_page.components[i]->lookup.start) + 1;
+
+        default_page.components[i]->lookup.reference = (char *)calloc(l1_component_lookup_reference_length, sizeof(char));
+        if (default_page.components[i]->lookup.reference == NULL) {
+            fprintf(stderr, "Failed to allocate memory for default_page.components[i]->lookup.reference\nError code: %d\n", errno);
+            /** TODO */
+        }
+
+        if (memcpy(default_page.components[i]->lookup.reference, default_page.html_content + default_page.components[i]->lookup.start, (l1_component_lookup_reference_length - 1)) == NULL) {
+            /** TODO */
+        }
+
+        default_page.components[i]->lookup.reference[l1_component_lookup_reference_length - 1] = '\0';
+
+        uint8_t j;
+        for (j = 0; j < default_page.components[i]->component->components_length; j++) {
+            size_t l2_component_lookup_reference_length = (default_page.components[i]->component->components[j]->lookup.end - default_page.components[i]->component->components[j]->lookup.start) + 1;
+
+            default_page.components[i]->component->components[j]->lookup.reference = (char *)calloc(l2_component_lookup_reference_length, sizeof(char));
+            if (default_page.components[i]->component->components[j]->lookup.reference == NULL) {
+                fprintf(stderr, "Failed to allocate memory for default_page.components[i]->component->components[j]->lookup.reference\nError code: %d\n", errno);
+                /** TODO */
+            }
+
+            if (memcpy(default_page.components[i]->component->components[j]->lookup.reference, default_page.components[i]->component->html_content + default_page.components[i]->component->components[j]->lookup.start, (l2_component_lookup_reference_length - 1)) == NULL) {
+                /** TODO */
+            }
+
+            default_page.components[i]->component->components[j]->lookup.reference[l2_component_lookup_reference_length - 1] = '\0';
+        }
+    }
 
     ENV env = {0};
     const char env_file_path[] = ".env";
@@ -765,7 +798,104 @@ Error home_get(int client_socket, HttpRequest *request, uint8_t thread_index) {
         return error;
     }
 
+    /*
     print_query_result(users_result);
+    */
+
+    printf("Template: %s\n", templates[0]->path);
+
+    char *default_page_working_copy = (char *)calloc(templates[0]->html_content_length, sizeof(char));
+    if (default_page_working_copy == NULL) {
+        /* TODO */
+    }
+
+    if (memcpy(default_page_working_copy, templates[0]->html_content, (templates[0]->html_content_length - 1)) == NULL) {
+        /* TODO */
+    }
+
+    default_page_working_copy[templates[0]->html_content_length - 1] = '\0';
+
+    printf("%s\n", default_page_working_copy);
+    printf("Has %d components\n", templates[0]->components_length);
+
+    uint8_t i;
+    for (i = 0; i < templates[0]->components_length; i++) {
+        printf("Component: %s\n", templates[0]->components[i]->component->path);
+
+        char *l1_component_working_copy = (char *)calloc(templates[0]->components[i]->component->html_content_length, sizeof(char));
+        if (l1_component_working_copy == NULL) {
+            /* TODO */
+        }
+
+        if (memcpy(l1_component_working_copy, templates[0]->components[i]->component->html_content, (templates[0]->components[i]->component->html_content_length - 1)) == NULL) {
+            /* TODO */
+        }
+
+        l1_component_working_copy[templates[0]->components[i]->component->html_content_length - 1] = '\0';
+
+        printf("%s\n", l1_component_working_copy);
+        printf("Has %d components\n", templates[0]->components[i]->component->components_length);
+
+        uint8_t j;
+        for (j = 0; j < templates[0]->components[i]->component->components_length; j++) {
+            printf("Component: %s\n", templates[0]->components[i]->component->components[j]->component->path);
+
+            char *l2_component_working_copy = (char *)calloc(templates[0]->components[i]->component->components[j]->component->html_content_length, sizeof(char));
+            if (l2_component_working_copy == NULL) {
+                /* TODO */
+            }
+
+            if (memcpy(l2_component_working_copy, templates[0]->components[i]->component->components[j]->component->html_content, (templates[0]->components[i]->component->components[j]->component->html_content_length - 1)) == NULL) {
+                /* TODO */
+            }
+
+            l2_component_working_copy[templates[0]->components[i]->component->components[j]->component->html_content_length - 1] = '\0';
+
+            printf("%s\n", l2_component_working_copy);
+            printf("Has %d components\n", templates[0]->components[i]->component->components[j]->component->components_length);
+
+            char *after_address;
+            if ((after_address = strstr(l1_component_working_copy, templates[0]->components[i]->component->components[j]->lookup.reference)) == NULL) {
+                /* TODO */
+            }
+
+            size_t component_lookup_reference_length = templates[0]->components[i]->component->components[j]->lookup.end - templates[0]->components[i]->component->components[j]->lookup.start;
+
+            size_t l1_component_child_component_reference_start = after_address - l1_component_working_copy;
+            after_address += component_lookup_reference_length;
+            size_t after_length = strlen(after_address) + 1;
+
+            printf("%s\n", after_address);
+
+            char *after = (char *)calloc(after_length, sizeof(char));
+            if (after == NULL) {
+                /* TODO */
+            }
+
+            after[after_length - 1] = '\0';
+
+            if (memcpy(after, after_address, after_length) == NULL) {
+                /* TODO */
+            }
+
+            l1_component_working_copy = (char *)realloc(l1_component_working_copy, (l1_component_child_component_reference_start + strlen(l2_component_working_copy) + after_length) * sizeof(char));
+            if (l1_component_working_copy == NULL) {
+                /* TODO */
+            }
+
+            memmove(l1_component_working_copy + l1_component_child_component_reference_start + strlen(l2_component_working_copy), after, after_length);
+            memcpy(l1_component_working_copy + l1_component_child_component_reference_start, l2_component_working_copy, strlen(l2_component_working_copy));
+
+            printf("%s\n", l1_component_working_copy);
+        }
+    }
+
+    /**
+     * How to render a block inside a html template?
+     * 1. A template has been redendered with several blocks already so addresses are useless at this point
+     * 2. Use the reference lookup to find the end of there the new block will be put
+     * 3. Count from the end of the block to the end of the template and that's the 'after'
+     */
 
     char response[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
                       "<html><body><h1>Hello world!</h1></body></html>";
